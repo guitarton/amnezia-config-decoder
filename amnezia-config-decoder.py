@@ -4,10 +4,11 @@ import base64
 import json
 import zlib
 
+
 def encode_config(config):
     """Encodes a JSON configuration into a vpn:// prefixed string."""
     # Use indent=4 to preserve indentation
-    json_str = json.dumps(config, indent=4).encode() 
+    json_str = json.dumps(config, indent=4).encode()
 
     # Compress data using zlib
     compressed_data = zlib.compress(json_str)
@@ -15,10 +16,11 @@ def encode_config(config):
     # Add a 4-byte header with the original data length in big-endian format
     original_data_len = len(json_str)
     header = original_data_len.to_bytes(4, byteorder='big')
-    
+
     # Combine header and compressed data, then encode with Base64
     encoded_data = base64.urlsafe_b64encode(header + compressed_data).decode().rstrip("=")
     return f"vpn://{encoded_data}"
+
 
 def decode_config(encoded_string):
     """Decodes a vpn:// prefixed string into a JSON configuration."""
@@ -35,14 +37,30 @@ def decode_config(encoded_string):
         # Decompress the data starting from the 5th byte (after the header)
         decompressed_data = zlib.decompress(compressed_data[4:])
 
-        if len(decompressed_data) != original_data_len:
-            raise ValueError("Invalid length of decompressed data")
+        # if len(decompressed_data) != original_data_len:
+        #     raise ValueError("Invalid length of decompressed data")
 
         # Use json.loads with object_pairs_hook=OrderedDict to preserve key order in the JSON
         return json.loads(decompressed_data, object_pairs_hook=collections.OrderedDict)
     except zlib.error:
         # If decompression fails, assume the data is just base64 encoded JSON
         return json.loads(compressed_data.decode(), object_pairs_hook=collections.OrderedDict)
+
+
+def pretify_config(res):
+    # json.dump({"foo": json.dumps([{"bar": 1}, {"baz": 2}])}, sys.stdout)
+    # json.dump({"foo": [{"bar": 1}, {"baz": 2}]}, sys.stdout)
+    containers = res.get('containers')
+    container = containers[0]
+    cloak_last_config = json.loads(container.get('cloak').get('last_config'), object_pairs_hook=collections.OrderedDict)
+    print("Cloak configuration:\n")
+    print(json.dumps(cloak_last_config, indent=4))
+
+    openvpn_last_config = json.loads(container.get('openvpn').get('last_config').rstrip())
+    print("Openvpn configuration:\n")
+    print(openvpn_last_config.get('config'), "\n")
+    print("=" * 10)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -82,6 +100,7 @@ if __name__ == "__main__":
     elif args.encoded_string:
         # Decode Base64 string from arguments
         config = decode_config(args.encoded_string)
+        pretify_config(config)
         if args.output:
             with open(args.output, 'w') as f:
                 json.dump(config, f, indent=4)
